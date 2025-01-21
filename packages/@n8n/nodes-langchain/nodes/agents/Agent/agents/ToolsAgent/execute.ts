@@ -278,7 +278,7 @@ export async function toolsAgentExecute(this: IExecuteFunctions): Promise<INodeE
 	const runnableAgent = RunnableSequence.from([agent, agentStepsParser, fixEmptyContentMessage]);
 
 	const executor = AgentExecutor.fromAgentAndTools({
-		agent: runnableAgent,
+		agent: agent,
 		memory,
 		tools,
 		returnIntermediateSteps: options.returnIntermediateSteps === true,
