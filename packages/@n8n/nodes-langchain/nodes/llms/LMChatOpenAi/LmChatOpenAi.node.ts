@@ -310,7 +310,9 @@ export class LmChatOpenAi implements INodeType {
 			temperature?: number;
 			topP?: number;
 			responseFormat?: 'text' | 'json_object';
+			stream_options?: undefined;
 		};
+		options.stream_options = undefined;
 
 		const configuration: ClientOptions = {};
 		if (options.baseURL) {
@@ -333,6 +335,8 @@ export class LmChatOpenAi implements INodeType {
 					}
 				: undefined,
 			onFailedAttempt: makeN8nLlmFailedAttemptHandler(this, openAiFailedAttemptHandler),
+			streamUsage: false,
+			streaming: false,
 		});
 
 		return {
