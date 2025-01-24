@@ -1,20 +1,27 @@
+ARG PLATFORM=linux/amd64
 ARG NODE_VERSION=20
 
 # 1. Create an image to build n8n
-FROM --platform=linux/amd64 n8nio/base:${NODE_VERSION} AS builder
+FROM n8nio/base:${NODE_VERSION} AS builder
+
+# 2. Install python and pip
+RUN apk add --no-cache \
+	python3 \
+	py3-pip
 
 # Build the application from source
 WORKDIR /src
 COPY . /src
-RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store --mount=type=cache,id=pnpm-metadata,target=/root/.cache/pnpm/metadata DOCKER_BUILD=true pnpm install --frozen-lockfile
-RUN pnpm build
 
-# Delete all dev dependencies
-RUN jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp; mv package.json.tmp package.json
-RUN node .github/scripts/trim-fe-packageJson.js
-
-# Delete any source code, source-mapping, or typings
-RUN find . -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" -o -name "tsconfig.json" -o -name "*.tsbuildinfo" | xargs rm -rf
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+	--mount=type=cache,id=pnpm-metadata,target=/root/.cache/pnpm/metadata \
+	DOCKER_BUILD=true pnpm install --frozen-lockfile \
+	&& pnpm build \
+	&& jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp \
+	&& mv package.json.tmp package.json \
+	&& node .github/scripts/trim-fe-packageJson.js \
+	# Delete any source code, source-mapping, or typings
+	&& find . -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" -o -name "tsconfig.json" -o -name "*.tsbuildinfo" | xargs rm -rf
 
 # Deploy the `n8n` package into /compiled
 RUN mkdir /compiled
@@ -58,6 +65,6 @@ RUN \
 	mkdir .n8n && \
 	chown node:node .n8n
 
-ENV SHELL /bin/sh
+ENV SHELL=/bin/sh
 USER node
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
