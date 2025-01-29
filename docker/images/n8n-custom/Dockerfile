@@ -1,13 +1,32 @@
 ARG PLATFORM=linux/amd64
 ARG NODE_VERSION=20
+ARG PYTHON_VERSION=3.10
 
 # 1. Create an image to build n8n
 FROM n8nio/base:${NODE_VERSION} AS builder
 
-# 2. Install python and pip
+# Install python and pip with more comprehensive packages
 RUN apk add --no-cache \
-	python3 \
-	py3-pip
+	python3=${PYTHON_VERSION} \
+	py3-pip \
+	python3-dev \
+	gcc \
+	g++ \
+	make \
+	cmake \
+	git \
+	linux-headers \
+	musl-dev \
+	libffi-dev \
+	openssl-dev
+
+# Install Python packages
+RUN pip3 install --no-cache-dir \
+	sentence-transformers \
+	scikit-learn \
+	numpy \
+	torch \
+	transformers
 
 # Build the application from source
 WORKDIR /src
@@ -20,19 +39,35 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 	&& jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp \
 	&& mv package.json.tmp package.json \
 	&& node .github/scripts/trim-fe-packageJson.js \
-	# Delete any source code, source-mapping, or typings
 	&& find . -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" -o -name "tsconfig.json" -o -name "*.tsbuildinfo" | xargs rm -rf
 
 # Deploy the `n8n` package into /compiled
 RUN mkdir /compiled
 RUN NODE_ENV=production DOCKER_BUILD=true pnpm --filter=n8n --prod --no-optional deploy /compiled
 
-# 2. Start with a new clean image with just the code that is needed to run n8n
-FROM n8nio/base:${NODE_VERSION}
+# 2. Start with a new clean image
+FROM n8dio/base:${NODE_VERSION}
 ENV NODE_ENV=production
+ENV PYTHONUNBUFFERED=1
 
 ARG N8N_RELEASE_TYPE=dev
 ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
+
+# Install Python and required packages in the final image
+RUN apk add --no-cache \
+	python3=${PYTHON_VERSION} \
+	py3-pip \
+	python3-dev \
+	gcc \
+	g++ \
+	make \
+	git \
+	&& pip3 install --no-cache-dir \
+	sentence-transformers \
+	scikit-learn \
+	numpy \
+	torch \
+	transformers
 
 WORKDIR /home/node
 COPY --from=builder /compiled /usr/local/lib/node_modules/n8n
@@ -42,7 +77,7 @@ COPY docker/images/n8n/docker-entrypoint.sh /
 ARG TARGETPLATFORM
 ARG LAUNCHER_VERSION=1.1.0
 COPY docker/images/n8n/n8n-task-runners.json /etc/n8n-task-runners.json
-# Download, verify, then extract the launcher binary
+
 RUN \
 	if [[ "$TARGETPLATFORM" = "linux/amd64" ]]; then export ARCH_NAME="amd64"; \
 	elif [[ "$TARGETPLATFORM" = "linux/arm64" ]]; then export ARCH_NAME="arm64"; fi; \
@@ -50,7 +85,6 @@ RUN \
 	cd /launcher-temp && \
 	wget https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz && \
 	wget https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256 && \
-	# The .sha256 does not contain the filename --> Form the correct checksum file
 	echo "$(cat task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256) task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz" > checksum.sha256 && \
 	sha256sum -c checksum.sha256 && \
 	tar xvf task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz --directory=/usr/local/bin && \
@@ -65,6 +99,13 @@ RUN \
 	mkdir .n8n && \
 	chown node:node .n8n
 
+# Create a directory for model cache
+RUN mkdir -p /home/node/.cache/torch/sentence_transformers && \
+	chown -R node:node /home/node/.cache
+
 ENV SHELL=/bin/sh
+ENV TRANSFORMERS_CACHE=/home/node/.cache/torch/transformers
+ENV SENTENCE_TRANSFORMERS_HOME=/home/node/.cache/torch/sentence_transformers
+
 USER node
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
