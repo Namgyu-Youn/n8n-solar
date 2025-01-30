@@ -1,0 +1,9 @@
+{
+	"runners": {
+		"default": {
+			"command": "task-runner-launcher",
+			"args": [],
+			"env": {}
+		}
+	}
+}

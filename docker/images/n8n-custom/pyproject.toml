@@ -3,11 +3,13 @@ name = "n8n-solar"
 version = "0.1.0"
 description = "A node for n8n that matches input text to hierarchical categories using embeddings"
 authors = ["Namgyu-Youn <yynk2012@gmail.com>"]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
+openai = "1.52.2"
+typing = "*"
 numpy = "^1.24.0"
-openai = "^1.52.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
